@@ -1,8 +1,10 @@
 const express = require("express");
 const mysql = require("mysql2");
-const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const cors = require("cors");
 require("dotenv").config();
+
+const validatePersonMiddleware = require("./validatePersonMiddleware");
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -18,41 +20,8 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
+app.use(cors());
 app.use(express.json());
-
-// AJV Setup
-const ajv = new Ajv();
-addFormats(ajv);
-
-// Schema für POST /person
-const personSchema = {
-  type: "object",
-  properties: {
-    vorname: { type: "string" },
-    nachname: { type: "string" },
-    plz: { type: "string" },
-    strasse: { type: "string" },
-    ort: { type: "string" },
-    telefonnummer: { type: "string" },
-    email: { type: "string", format: "email" },
-  },
-  required: ["vorname", "nachname", "email"],
-  additionalProperties: false,
-};
-
-const validatePerson = ajv.compile(personSchema);
-
-// Middleware zur Validierung
-function validatePersonMiddleware(req, res, next) {
-  const valid = validatePerson(req.body);
-  if (!valid) {
-    return res.status(400).json({
-      error: "Ungültiges JSON-Format",
-      details: validatePerson.errors,
-    });
-  }
-  next();
-}
 
 // Route für /hello mit Query-Param
 app.get("/hello", (req, res) => {
@@ -98,28 +67,6 @@ app.post("/hello/body", (req, res) => {
   );
 });
 
-// POST /person mit JSON-Schema-Validierung
-app.post("/person", validatePersonMiddleware, (req, res) => {
-  const { vorname, nachname, plz, strasse, ort, telefonnummer, email } =
-    req.body;
-
-  const query = `
-    INSERT INTO personen (vorname, nachname, plz, strasse, ort, telefonnummer, email)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
-  `;
-  const values = [vorname, nachname, plz, strasse, ort, telefonnummer, email];
-
-  pool.query(query, values, (err, result) => {
-    if (err) {
-      console.error("Fehler beim Einfügen der Person:", err);
-      return res.status(500).send("Fehler beim Speichern der Person");
-    }
-    res
-      .status(201)
-      .send({ message: "Person hinzugefügt", id: result.insertId });
-  });
-});
-
 // GET /person
 app.get("/person", (req, res) => {
   pool.query("SELECT * FROM personen", (err, results) => {
@@ -131,23 +78,50 @@ app.get("/person", (req, res) => {
 // GET /person/:id
 app.get("/person/:id", (req, res) => {
   const { id } = req.params;
-
   pool.query("SELECT * FROM personen WHERE id = ?", [id], (err, result) => {
     if (err) return res.status(500).send("Fehler beim Abrufen der Person");
-    if (result.length === 0)
-      return res.status(404).send("Person nicht gefunden");
+    if (result.length === 0) return res.status(404).send("Person nicht gefunden");
     res.status(200).json(result[0]);
+  });
+});
+
+// PUT /person/:id
+app.put("/person/:id", validatePersonMiddleware, (req, res) => {
+  const { id } = req.params;
+  const { vorname, nachname, plz, strasse, ort, telefonnummer, email } = req.body;
+  const query = `
+    UPDATE personen
+    SET vorname = ?, nachname = ?, plz = ?, strasse = ?, ort = ?, telefonnummer = ?, email = ?
+    WHERE id = ?
+  `;
+  const values = [vorname, nachname, plz, strasse, ort, telefonnummer, email, id];
+  pool.query(query, values, (err, result) => {
+    if (err) return res.status(500).send("Fehler beim Aktualisieren der Person");
+    if (result.affectedRows === 0) return res.status(404).send("Person nicht gefunden");
+    res.status(200).send("Person aktualisiert");
+  });
+});
+
+// POST /person
+app.post("/person", validatePersonMiddleware, (req, res) => {
+  const { vorname, nachname, plz, strasse, ort, telefonnummer, email } = req.body;
+  const query = `
+    INSERT INTO personen (vorname, nachname, plz, strasse, ort, telefonnummer, email)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `;
+  const values = [vorname, nachname, plz, strasse, ort, telefonnummer, email];
+  pool.query(query, values, (err, result) => {
+    if (err) return res.status(500).send("Fehler beim Speichern der Person");
+    res.status(201).send({ message: "Person hinzugefügt", id: result.insertId });
   });
 });
 
 // DELETE /person/:id
 app.delete("/person/:id", (req, res) => {
   const { id } = req.params;
-
   pool.query("DELETE FROM personen WHERE id = ?", [id], (err, result) => {
     if (err) return res.status(500).send("Fehler beim Löschen der Person");
-    if (result.affectedRows === 0)
-      return res.status(404).send("Person nicht gefunden");
+    if (result.affectedRows === 0) return res.status(404).send("Person nicht gefunden");
     res.status(200).send("Person gelöscht");
   });
 });
