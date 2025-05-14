@@ -1,5 +1,6 @@
 const Ajv = require("ajv");
 const addFormats = require("ajv-formats");
+const jwt = require("jsonwebtoken");
 
 const ajv = new Ajv();
 addFormats(ajv);
@@ -32,4 +33,21 @@ function validatePersonMiddleware(req, res, next) {
   next();
 }
 
-module.exports = validatePersonMiddleware; 
+const authenticateToken = (req, res, next) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: "Kein Token vorhanden" });
+  }
+
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) {
+      return res.status(403).json({ message: "Ungültiger Token" });
+    }
+    req.user = user;
+    next();
+  });
+};
+
+module.exports = { validatePersonMiddleware, authenticateToken }; 
