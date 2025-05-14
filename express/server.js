@@ -171,8 +171,8 @@ app.post("/register", (req, res) => {
 });
 
 // Token Generierung basierend auf Vorname und ID
-app.post("/generate-token", (req, res) => {
-  const { vorname, id } = req.body;
+app.get("/generate-token", (req, res) => {
+  const { vorname, id } = req.query;
 
   if (!vorname || !id) {
     return res.status(400).json({ message: "Vorname und ID sind erforderlich" });
@@ -274,7 +274,7 @@ app.get("/auth-code/:userId", validateToken, (req, res) => {
   if (req.user.id !== parseInt(userId)) {
     return res.status(403).json({ message: "Nicht autorisiert" });
   }
-
+  
   // Generiere einen zufälligen 6-stelligen Code
   const authCode = Math.floor(100000 + Math.random() * 900000).toString();
   
